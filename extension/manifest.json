@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Chrome Fact Check (MVP)",
+  "description": "Highlight text and send it to your ASP.NET fact-check backend.",
+  "version": "0.1.0",
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Chrome Fact Check",
+    "default_popup": "popup.html"
+  }
+}

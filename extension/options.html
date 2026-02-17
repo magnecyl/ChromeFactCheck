@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chrome Fact Check Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Chrome Fact Check Settings</h1>
+
+    <form id="settings-form">
+      <section>
+        <h2>Backend</h2>
+        <label>
+          Backend URL
+          <input id="backendBaseUrl" type="url" placeholder="http://localhost:5053" required />
+        </label>
+      </section>
+
+      <section>
+        <h2>Provider</h2>
+        <label>
+          Provider
+          <select id="provider">
+            <option value="openai">OpenAI</option>
+            <option value="azure_openai">Azure OpenAI</option>
+            <option value="custom">Custom (OpenAI-compatible)</option>
+          </select>
+        </label>
+
+        <label>
+          API Key
+          <input id="apiKey" type="password" autocomplete="off" />
+          <small>Stored locally in browser storage.</small>
+        </label>
+
+        <label>
+          Endpoint (optional for OpenAI)
+          <input id="endpoint" type="url" placeholder="https://api.openai.com" />
+        </label>
+
+        <label>
+          Model
+          <input id="model" type="text" placeholder="gpt-4.1-mini" required />
+        </label>
+      </section>
+
+      <section>
+        <h2>Fact-check behavior</h2>
+        <label>
+          Strictness
+          <select id="strictness">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+
+        <label>
+          Answer language
+          <select id="answerLanguage">
+            <option value="auto">Auto (page/browser locale)</option>
+            <option value="en-US">English</option>
+            <option value="sv-SE">Swedish</option>
+            <option value="de-DE">German</option>
+            <option value="fr-FR">French</option>
+            <option value="es-ES">Spanish</option>
+          </select>
+        </label>
+
+        <label>
+          Max Sources
+          <input id="maxSources" type="number" min="3" max="8" />
+        </label>
+
+        <label class="checkbox">
+          <input id="sendPageUrl" type="checkbox" />
+          Include page URL in requests
+        </label>
+      </section>
+
+      <section>
+        <h2>Domain controls</h2>
+        <label>
+          Trusted domains (comma or newline separated)
+          <textarea id="trustedDomains" rows="4" placeholder="wikipedia.org&#10;who.int&#10;scb.se"></textarea>
+        </label>
+
+        <label>
+          Blocked domains (comma or newline separated)
+          <textarea id="blockedDomains" rows="4"></textarea>
+        </label>
+      </section>
+
+      <button type="submit">Save settings</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </form>
+  </main>
+
+  <script src="options.js"></script>
+</body>
+</html>

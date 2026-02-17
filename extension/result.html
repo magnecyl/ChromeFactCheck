@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fact-check result</title>
+  <link rel="stylesheet" href="result.css" />
+</head>
+<body>
+  <main class="layout">
+    <header>
+      <h1>Fact-check result</h1>
+      <p id="timestamp"></p>
+    </header>
+
+    <section id="loading-panel" class="panel">
+      <div class="loading-row">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <p id="loading-text">Loading full report...</p>
+      </div>
+    </section>
+
+    <section id="error-panel" class="panel hidden">
+      <h2>Request failed</h2>
+      <p id="error-text"></p>
+      <p>Open extension settings and verify backend URL, provider endpoint, model, and API key.</p>
+      <button id="open-options">Open settings</button>
+    </section>
+
+    <section id="input-panel" class="panel hidden">
+      <h2>Selected text</h2>
+      <pre id="selected-text"></pre>
+    </section>
+
+    <section id="summary-panel" class="panel hidden">
+      <h2>Overall assessment</h2>
+      <p id="overall-probability"></p>
+      <p id="summary"></p>
+      <h3>Key risks</h3>
+      <ul id="key-risks"></ul>
+      <h3>What to check next</h3>
+      <ul id="check-next"></ul>
+    </section>
+
+    <section id="sources-panel" class="panel hidden">
+      <h2>Checked sources</h2>
+      <ul id="checked-sources"></ul>
+    </section>
+
+    <section id="claims-panel" class="panel hidden">
+      <h2>Claims</h2>
+      <div id="claims-list"></div>
+    </section>
+
+    <section id="empty-panel" class="panel hidden">
+      <p>No fact-check result found yet. Select text on a webpage, then choose <strong>Fact-check selected text</strong> from the context menu.</p>
+    </section>
+  </main>
+
+  <script src="result.js"></script>
+</body>
+</html>

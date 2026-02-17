@@ -1,0 +1,174 @@
+:root {
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  color: #111926;
+  background: #f4f6fa;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.layout {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+  display: grid;
+  gap: 14px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+h3 {
+  margin: 12px 0 6px;
+  font-size: 0.95rem;
+}
+
+#timestamp {
+  margin: 6px 0 0;
+  color: #596b8a;
+  font-size: 0.9rem;
+}
+
+#overall-probability {
+  margin: 0 0 8px;
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: #1d2a40;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #d4dced;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.loading-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #cfe7ef;
+  border-top-color: #0891b2;
+  box-sizing: border-box;
+  animation: spin 0.7s linear infinite;
+}
+
+#loading-text {
+  margin: 0;
+  color: #1f344a;
+  font-weight: 600;
+  font-size: 0.93rem;
+}
+
+.hidden {
+  display: none;
+}
+
+pre {
+  white-space: pre-wrap;
+  margin: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+}
+
+ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+#claims-list {
+  display: grid;
+  gap: 10px;
+}
+
+.claim {
+  border: 1px solid #d6def0;
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.claim-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.source-item {
+  word-break: break-word;
+}
+
+.source-status {
+  color: #596b8a;
+  font-size: 0.86rem;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.badge.SUPPORTED {
+  background: #e0f5e8;
+  color: #146838;
+}
+
+.badge.DISPUTED {
+  background: #fde8e5;
+  color: #9d2d2d;
+}
+
+.badge.MISLEADING {
+  background: #fff3dd;
+  color: #8c5a00;
+}
+
+.badge.UNCLEAR {
+  background: #eceff6;
+  color: #3e4f73;
+}
+
+button {
+  font: inherit;
+  border: 0;
+  border-radius: 8px;
+  background: #0f4ecb;
+  color: #ffffff;
+  padding: 8px 12px;
+  width: fit-content;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #0d43ae;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

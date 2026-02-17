@@ -1,0 +1,87 @@
+:root {
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  color: #162338;
+  background: #f3f6fc;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+.popup {
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.header p {
+  margin: 3px 0 0;
+  font-size: 0.82rem;
+  color: #5b6c89;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #d4deef;
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+label {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+select {
+  font: inherit;
+  border: 1px solid #b5c3de;
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: #ffffff;
+}
+
+#save-status {
+  margin: 0;
+  min-height: 1rem;
+  font-size: 0.8rem;
+  color: #1c5aa8;
+}
+
+.actions {
+  grid-template-columns: 1fr;
+}
+
+button {
+  font: inherit;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+button.primary {
+  background: #0f4ecb;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+button.primary:hover {
+  background: #0d43ae;
+}
+
+button.secondary {
+  background: #e8edf8;
+  color: #21324d;
+}
+
+button.secondary:hover {
+  background: #dce5f6;
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chrome Fact Check</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main class="popup">
+    <header class="header">
+      <h1>Chrome Fact Check</h1>
+      <p>Quick controls</p>
+    </header>
+
+    <section class="panel">
+      <label for="answerLanguage">Answer language</label>
+      <select id="answerLanguage">
+        <option value="auto">Auto (page/browser locale)</option>
+        <option value="en-US">English</option>
+        <option value="sv-SE">Swedish</option>
+        <option value="de-DE">German</option>
+        <option value="fr-FR">French</option>
+        <option value="es-ES">Spanish</option>
+      </select>
+      <p id="save-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel actions">
+      <button id="open-options" class="primary">Open settings</button>
+      <button id="open-result" class="secondary">Open latest report</button>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
