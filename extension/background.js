@@ -1,40 +1,48 @@
+import "./localization.js";
+
 const MENU_ID = "chrome-fact-check.selection";
-const MENU_DEFAULT_TITLE = "Fact-check selected text";
 const SETTINGS_KEY = "settings";
 const RESULT_KEY = "lastFactCheckResult";
 const ERROR_KEY = "lastFactCheckError";
 const INPUT_KEY = "lastFactCheckInput";
 const TIMESTAMP_KEY = "lastFactCheckAt";
+const TRIAL_CLIENT_ID_KEY = "trialClientId";
 
 const POPOVER_MESSAGE = "SHOW_FACTCHECK_POPOVER";
 const OPEN_DETAILS_MESSAGE = "OPEN_FACTCHECK_DETAILS";
 const OPEN_OPTIONS_MESSAGE = "OPEN_FACTCHECK_OPTIONS";
 const START_FACTCHECK_MESSAGE = "START_FACTCHECK_FROM_SELECTION";
+const GET_SELECTION_CONTEXT_MESSAGE = "GET_SELECTION_CONTEXT";
 const ICON_RESET_DELAY_MS = 4500;
+const I18N = globalThis.ChromeFactCheckI18n;
 
 const ICON_PALETTE = {
   idle: {
-    base: "#1e293b",
-    accent: "#60a5fa",
-    ring: "#334155",
-    mark: "#f8fafc"
+    panelTop: "#9ca3af",
+    panelBottom: "#6b7280",
+    accent: "#22c55e",
+    ring: "#374151",
+    mark: "#f9fafb"
   },
   thinking: {
-    base: "#0f172a",
-    accent: "#22d3ee",
-    ring: "#155e75",
-    mark: "#ecfeff"
+    panelTop: "#9ca3af",
+    panelBottom: "#6b7280",
+    accent: "#10b981",
+    ring: "#065f46",
+    mark: "#f0fdf4"
   },
   success: {
-    base: "#14532d",
-    accent: "#4ade80",
+    panelTop: "#6b7280",
+    panelBottom: "#4b5563",
+    accent: "#22c55e",
     ring: "#166534",
     mark: "#f0fdf4"
   },
   error: {
-    base: "#7f1d1d",
-    accent: "#f87171",
-    ring: "#991b1b",
+    panelTop: "#9ca3af",
+    panelBottom: "#6b7280",
+    accent: "#ef4444",
+    ring: "#7f1d1d",
     mark: "#fef2f2"
   }
 };
@@ -44,6 +52,7 @@ let spinnerFrame = 0;
 let iconResetTimeoutId = null;
 let currentIconState = "idle";
 let menuAvailable = false;
+let lastUiLocale = I18N.DEFAULT_LOCALE;
 
 const DEFAULT_SETTINGS = {
   backendBaseUrl: "http://localhost:5053",
@@ -60,16 +69,24 @@ const DEFAULT_SETTINGS = {
 };
 
 void setStatusIcon("idle");
-ensureContextMenu();
+void ensureContextMenu();
 
 chrome.runtime.onInstalled.addListener(() => {
-  ensureContextMenu();
+  void ensureContextMenu();
   void setStatusIcon("idle");
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  ensureContextMenu();
+  void ensureContextMenu();
   void setStatusIcon("idle");
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !changes[SETTINGS_KEY]) {
+    return;
+  }
+
+  void ensureContextMenu();
 });
 
 chrome.runtime.onMessage.addListener((message, sender) => {
@@ -92,7 +109,8 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     const contextOverride = {
       pageUrl: typeof message.pageUrl === "string" ? message.pageUrl : "",
       pageTitle: typeof message.pageTitle === "string" ? message.pageTitle : "",
-      locale: typeof message.locale === "string" ? message.locale : ""
+      locale: typeof message.locale === "string" ? message.locale : "",
+      selectedLinks: Array.isArray(message.selectedLinks) ? message.selectedLinks : []
     };
 
     void runFactCheckFlow({
@@ -108,31 +126,44 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     return;
   }
 
-  void runFactCheckFlow({
-    selectedText: (info.selectionText || "").trim(),
-    tab
-  });
+  void runFactCheckFromContextMenu(info, tab);
 });
 
+async function runFactCheckFromContextMenu(info, tab) {
+  const selectedText = (info.selectionText || "").trim();
+  const selectionContext = await getSelectionContextFromTab(tab?.id);
+
+  await runFactCheckFlow({
+    selectedText,
+    tab,
+    contextOverride: selectionContext
+  });
+}
+
 async function runFactCheckFlow({ selectedText, tab, contextOverride = null }) {
+  const settings = await loadSettings();
+  const initialLocale = resolveUiLocale(settings.answerLanguage || "auto", contextOverride?.locale || "");
+  lastUiLocale = initialLocale;
+  const initialUiText = getPopoverUiText(initialLocale);
+
   if (!selectedText) {
-    const message = "No text was selected. Highlight text and try again.";
+    const message = t("fact.noSelection", {}, initialLocale);
     await saveResultState({ result: null, error: message, input: null });
     await setStatusIcon("error");
     scheduleIconReset();
     await showPopoverOrFallback(tab?.id, {
       tone: "error",
-      title: "Fact-check failed",
+      title: initialUiText.failedTitle,
       summary: message,
-      ctaLabel: "Read more..."
+      ctaLabel: initialUiText.readMore,
+      locale: initialLocale
     });
     return;
   }
 
   let requestBody;
   let finalIconState = "success";
-  const initialLocale = contextOverride?.locale || chrome.i18n.getUILanguage();
-  const initialUiText = getPopoverUiText(initialLocale);
+
   startThinkingAnimation();
   startContextMenuThinkingAnimation();
   await showPopoverOrFallback(
@@ -142,8 +173,10 @@ async function runFactCheckFlow({ selectedText, tab, contextOverride = null }) {
       title: initialUiText.thinkingTitle,
       summary: initialUiText.thinkingSummary,
       showSpinner: true,
+      spinnerLabel: initialUiText.spinnerInProgress,
       hideReadMore: true,
-      persist: true
+      persist: true,
+      locale: initialLocale
     },
     {
       fallbackToDetails: false
@@ -151,25 +184,37 @@ async function runFactCheckFlow({ selectedText, tab, contextOverride = null }) {
   );
 
   try {
-    const settings = await loadSettings();
-    validateSettings(settings);
+    validateSettings(settings, initialLocale);
 
     requestBody = buildFactCheckRequest(selectedText, tab, settings, contextOverride);
     const response = await callBackend(requestBody, settings);
-    const uiText = getPopoverUiText(response?.meta?.locale || initialLocale);
+    const uiLocale = resolveUiLocale(settings.answerLanguage || "auto", response?.meta?.locale || initialLocale);
+    const uiText = getPopoverUiText(uiLocale);
+    const overallTruthProbability = getOverallTruthProbability(response);
+    const trueProbabilityPct = Math.round(overallTruthProbability * 100);
+    const falseProbabilityPct = Math.round((1 - overallTruthProbability) * 100);
+    lastUiLocale = uiLocale;
 
     await saveResultState({ result: response, error: "", input: requestBody });
 
     await showPopoverOrFallback(tab?.id, {
       tone: "success",
       title: uiText.summaryTitle,
-      summary: buildPopoverSummary(response),
-      ctaLabel: uiText.readMore
+      summary: buildPopoverSummary(response, uiLocale, {
+        includeProbabilityLine: false
+      }),
+      ctaLabel: uiText.readMore,
+      probabilityTruePct: trueProbabilityPct,
+      probabilityFalsePct: falseProbabilityPct,
+      probabilityTrueLabel: t("prob.true", {}, uiLocale),
+      probabilityFalseLabel: t("prob.false", {}, uiLocale),
+      locale: uiLocale
     });
   } catch (error) {
     finalIconState = "error";
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : t("err.unknown", {}, initialLocale);
     const uiText = getPopoverUiText(initialLocale);
+    lastUiLocale = initialLocale;
 
     await saveResultState({
       result: null,
@@ -182,7 +227,8 @@ async function runFactCheckFlow({ selectedText, tab, contextOverride = null }) {
       title: uiText.failedTitle,
       summary: ensureSentence(trimText(message, 220)),
       ctaLabel: uiText.readMore,
-      showSettingsAction: shouldShowSettingsAction(message)
+      showSettingsAction: shouldShowSettingsAction(message),
+      locale: initialLocale
     });
   } finally {
     stopThinkingAnimation();
@@ -192,15 +238,19 @@ async function runFactCheckFlow({ selectedText, tab, contextOverride = null }) {
   }
 }
 
-function ensureContextMenu() {
+async function ensureContextMenu() {
   menuAvailable = false;
+  const settings = await loadSettings();
+  const locale = resolveUiLocale(settings.answerLanguage || "auto", "");
+  lastUiLocale = locale;
+  const menuTitle = t("menu.selection", {}, locale);
 
   chrome.contextMenus.removeAll(() => {
     void chrome.runtime.lastError;
 
     chrome.contextMenus.create({
       id: MENU_ID,
-      title: MENU_DEFAULT_TITLE,
+      title: menuTitle,
       contexts: ["selection"]
     }, () => {
       if (chrome.runtime.lastError) {
@@ -233,13 +283,13 @@ function stopThinkingAnimation() {
 
 function startContextMenuThinkingAnimation() {
   if (!menuAvailable) {
-    ensureContextMenu();
+    void ensureContextMenu();
   }
 }
 
 function stopContextMenuThinkingAnimation() {
   if (!menuAvailable) {
-    ensureContextMenu();
+    void ensureContextMenu();
   }
 }
 
@@ -301,21 +351,21 @@ async function updateActionBadge(state) {
 
 async function updateActionTitle(state) {
   if (state === "thinking") {
-    await chrome.action.setTitle({ title: "Chrome Fact Check: thinking..." });
+    await chrome.action.setTitle({ title: t("action.thinking", {}, lastUiLocale) });
     return;
   }
 
   if (state === "success") {
-    await chrome.action.setTitle({ title: "Chrome Fact Check: latest check completed" });
+    await chrome.action.setTitle({ title: t("action.success", {}, lastUiLocale) });
     return;
   }
 
   if (state === "error") {
-    await chrome.action.setTitle({ title: "Chrome Fact Check: latest check failed" });
+    await chrome.action.setTitle({ title: t("action.error", {}, lastUiLocale) });
     return;
   }
 
-  await chrome.action.setTitle({ title: "Chrome Fact Check" });
+  await chrome.action.setTitle({ title: t("action.idle", {}, lastUiLocale) });
 }
 
 function drawIcon(size, state, frame) {
@@ -329,32 +379,48 @@ function drawIcon(size, state, frame) {
 
   const inset = size * 0.08;
   const radius = size * 0.24;
+  const center = size / 2;
 
   ctx.clearRect(0, 0, size, size);
+
+  const bodyGradient = ctx.createLinearGradient(0, inset, 0, size - inset);
+  bodyGradient.addColorStop(0, palette.panelTop);
+  bodyGradient.addColorStop(1, palette.panelBottom);
+
   drawRoundedRect(ctx, inset, inset, size - inset * 2, size - inset * 2, radius);
-  ctx.fillStyle = palette.base;
+  ctx.fillStyle = bodyGradient;
   ctx.fill();
   ctx.lineWidth = Math.max(1, size * 0.05);
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.strokeStyle = withAlpha("#ffffff", 0.24);
   ctx.stroke();
 
-  const glowRadius = size * 0.31;
-  const gradient = ctx.createRadialGradient(size * 0.72, size * 0.32, 0, size * 0.5, size * 0.5, glowRadius * 1.8);
-  gradient.addColorStop(0, `${palette.accent}cc`);
-  gradient.addColorStop(1, `${palette.ring}00`);
-  ctx.fillStyle = gradient;
+  const plateRadius = size * 0.35;
   ctx.beginPath();
-  ctx.arc(size * 0.5, size * 0.5, glowRadius * 1.35, 0, Math.PI * 2);
+  ctx.arc(center, center, plateRadius, 0, Math.PI * 2);
+  ctx.fillStyle = withAlpha("#111827", 0.22);
   ctx.fill();
+  ctx.lineWidth = Math.max(1, size * 0.055);
+  ctx.strokeStyle = withAlpha(palette.ring, 0.8);
+  ctx.stroke();
 
   if (state === "error") {
-    drawCrossMark(ctx, size, palette.mark);
+    drawCrossMark(ctx, size, palette.accent);
   } else {
-    drawCheckMark(ctx, size, palette.mark, state === "thinking" ? 0.5 : 1);
+    drawCheckMark(ctx, size, palette.accent, state === "thinking" ? 0.6 : 1);
+  }
+
+  if (state === "success") {
+    ctx.save();
+    ctx.lineWidth = Math.max(1, size * 0.065);
+    ctx.strokeStyle = withAlpha(palette.accent, 0.42);
+    ctx.beginPath();
+    ctx.arc(center, center, size * 0.425, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   if (state === "thinking") {
-    drawSpinnerArc(ctx, size, palette.mark, frame);
+    drawSpinnerArc(ctx, size, palette.accent, frame);
   }
 
   return ctx.getImageData(0, 0, size, size);
@@ -405,18 +471,34 @@ function drawCrossMark(ctx, size, color) {
 
 function drawSpinnerArc(ctx, size, color, frame) {
   const center = size / 2;
-  const radius = size * 0.36;
+  const radius = size * 0.42;
   const start = ((frame % 24) / 24) * Math.PI * 2;
-  const end = start + Math.PI * 1.28;
+  const end = start + Math.PI * 1.12;
 
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = size * 0.12;
+  ctx.lineWidth = size * 0.09;
   ctx.lineCap = "round";
   ctx.beginPath();
   ctx.arc(center, center, radius, start, end);
   ctx.stroke();
   ctx.restore();
+}
+
+function withAlpha(hex, alpha) {
+  const safeHex = (hex || "").trim();
+  const normalized = safeHex.startsWith("#") ? safeHex.slice(1) : safeHex;
+
+  if (normalized.length !== 6) {
+    return `rgba(255, 255, 255, ${Math.min(1, Math.max(0, alpha))})`;
+  }
+
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const clampedAlpha = Math.min(1, Math.max(0, alpha));
+
+  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
 }
 
 async function loadSettings() {
@@ -427,35 +509,42 @@ async function loadSettings() {
   };
 }
 
-function validateSettings(settings) {
+function validateSettings(settings, locale = lastUiLocale) {
   if (!settings.backendBaseUrl || !settings.backendBaseUrl.trim()) {
-    throw new Error("Set Backend URL in extension options.");
+    throw new Error(t("err.setBackendUrl", {}, locale));
   }
 
   const provider = (settings.provider || "").trim();
 
-  if (["openai", "azure_openai"].includes(provider) && !settings.apiKey.trim()) {
-    throw new Error("Set API key in extension options for this provider.");
+  if (provider === "azure_openai" && !settings.apiKey.trim()) {
+    throw new Error(t("err.setApiKey", {}, locale));
   }
 
   if (provider === "azure_openai" && !settings.endpoint.trim()) {
-    throw new Error("Set Azure endpoint in extension options.");
+    throw new Error(t("err.setAzureEndpoint", {}, locale));
   }
 
   if (provider === "custom" && !settings.endpoint.trim()) {
-    throw new Error("Set custom endpoint in extension options.");
+    throw new Error(t("err.setCustomEndpoint", {}, locale));
   }
 }
 
 function buildFactCheckRequest(selectedText, tab, settings, contextOverride = null) {
   const locale = contextOverride?.locale || chrome.i18n.getUILanguage();
+  const resolvedAnswerLanguage = resolveUiLocale(settings.answerLanguage || "auto", locale);
   const pageTitle = contextOverride?.pageTitle || tab?.title || "";
   const pageUrl = settings.sendPageUrl
     ? contextOverride?.pageUrl || tab?.url || ""
     : "";
+  const selectedLinks = Array.isArray(contextOverride?.selectedLinks)
+    ? contextOverride.selectedLinks
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+    : [];
 
   return {
     selectedText,
+    selectedLinks,
     pageUrl,
     pageTitle,
     locale,
@@ -465,7 +554,7 @@ function buildFactCheckRequest(selectedText, tab, settings, contextOverride = nu
       model: settings.model,
       apiKeyPresent: Boolean(settings.apiKey && settings.apiKey.trim()),
       strictness: settings.strictness,
-      answerLanguage: settings.answerLanguage || "auto",
+      answerLanguage: resolvedAnswerLanguage,
       maxSources: Number(settings.maxSources || 5),
       trustedDomains: parseDomainList(settings.trustedDomains),
       blockedDomains: parseDomainList(settings.blockedDomains)
@@ -479,8 +568,12 @@ async function callBackend(requestBody, settings) {
     "Content-Type": "application/json"
   };
 
-  if (settings.apiKey?.trim()) {
+  const hasApiKey = Boolean(settings.apiKey?.trim());
+
+  if (hasApiKey) {
     headers["X-Llm-Api-Key"] = settings.apiKey.trim();
+  } else if ((settings.provider || "").trim() === "openai") {
+    headers["X-Trial-Id"] = await getOrCreateTrialClientId();
   }
 
   const response = await fetch(apiUrl, {
@@ -492,13 +585,14 @@ async function callBackend(requestBody, settings) {
   const responseText = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Backend error ${response.status}: ${trimText(responseText, 240)}`);
+    const detail = extractBackendErrorMessage(responseText);
+    throw new Error(`Backend error ${response.status}: ${detail}`);
   }
 
   try {
     return JSON.parse(responseText);
   } catch {
-    throw new Error("Backend returned non-JSON content.");
+    throw new Error(t("err.backendNonJson", {}, lastUiLocale));
   }
 }
 
@@ -534,12 +628,38 @@ async function showPopoverOrFallback(tabId, payload, options = {}) {
   }
 }
 
+async function getSelectionContextFromTab(tabId) {
+  if (!tabId) {
+    return null;
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: GET_SELECTION_CONTEXT_MESSAGE
+    });
+
+    if (!response || typeof response !== "object") {
+      return null;
+    }
+
+    return {
+      pageUrl: typeof response.pageUrl === "string" ? response.pageUrl : "",
+      pageTitle: typeof response.pageTitle === "string" ? response.pageTitle : "",
+      locale: typeof response.locale === "string" ? response.locale : "",
+      selectedLinks: Array.isArray(response.selectedLinks) ? response.selectedLinks : []
+    };
+  } catch {
+    return null;
+  }
+}
+
 function openResultDetailsTab() {
   return chrome.tabs.create({ url: chrome.runtime.getURL("result.html") });
 }
 
-function buildPopoverSummary(result) {
-  const locale = result?.meta?.locale || chrome.i18n.getUILanguage();
+function buildPopoverSummary(result, localeHint = "", options = {}) {
+  const includeProbabilityLine = options.includeProbabilityLine ?? true;
+  const locale = resolveUiLocale(localeHint || result?.meta?.locale || "auto");
   const uiText = getPopoverUiText(locale);
   const sentences = [];
   const overallTruthProbability = getOverallTruthProbability(result);
@@ -548,12 +668,14 @@ function buildPopoverSummary(result) {
   const primaryClaim = claims[0];
   const checkedSources = Array.isArray(result?.meta?.checkedSources) ? result.meta.checkedSources : [];
 
-  sentences.push(ensureSentence(
-    uiText.probabilityLine(
-      Math.round(overallTruthProbability * 100),
-      Math.round(falseProbability * 100)
-    )
-  ));
+  if (includeProbabilityLine) {
+    sentences.push(ensureSentence(
+      uiText.probabilityLine(
+        Math.round(overallTruthProbability * 100),
+        Math.round(falseProbability * 100)
+      )
+    ));
+  }
 
   if (primaryClaim) {
     const verdict = (primaryClaim.verdict || "UNCLEAR").toUpperCase();
@@ -591,27 +713,30 @@ function buildPopoverSummary(result) {
 }
 
 function getPopoverUiText(locale) {
-  void locale;
+  const resolvedLocale = resolveUiLocale(locale, locale);
 
   return {
-    thinkingTitle: "Fact-checking...",
-    thinkingSummary: "Checking the selected text and linked sources now. This can take a few seconds.",
-    summaryTitle: "Fact-check summary",
-    failedTitle: "Fact-check failed",
-    readMore: "Read more...",
-    probabilityLine: (truePct, falsePct) => `Estimated probability: true ${truePct}% and false ${falsePct}%`,
-    primaryClaimLine: (verdict, confidence) => `Primary claim: ${translateVerdict(verdict)} (${confidence}%)`,
+    thinkingTitle: t("fact.thinkingTitle", {}, resolvedLocale),
+    thinkingSummary: t("fact.thinkingSummary", {}, resolvedLocale),
+    summaryTitle: t("fact.summaryTitle", {}, resolvedLocale),
+    failedTitle: t("fact.failedTitle", {}, resolvedLocale),
+    readMore: t("ui.readMore", {}, resolvedLocale),
+    spinnerInProgress: t("fact.spinnerInProgress", {}, resolvedLocale),
+    probabilityLine: (truePct, falsePct) =>
+      t("fact.probabilityLine", { truePct, falsePct }, resolvedLocale),
+    primaryClaimLine: (verdict, confidence) =>
+      t("fact.primaryClaimLine", { verdict: translateVerdict(verdict, resolvedLocale), confidence }, resolvedLocale),
     sourcesLine: (fetchedCount, failedCount) =>
       failedCount > 0
-        ? `Checked sources: ${fetchedCount} fetched, ${failedCount} failed`
-        : `Checked sources: ${fetchedCount} fetched`,
-    noSourcesLine: "No links were included in the selected text",
-    openDetailsLine: "Open Read more for claim-by-claim detail"
+        ? t("fact.sourcesLineWithFailed", { fetchedCount, failedCount }, resolvedLocale)
+        : t("fact.sourcesLineFetchedOnly", { fetchedCount }, resolvedLocale),
+    noSourcesLine: t("fact.noSourcesLine", {}, resolvedLocale),
+    openDetailsLine: t("fact.openDetailsLine", {}, resolvedLocale)
   };
 }
 
-function translateVerdict(verdict) {
-  return (verdict || "UNCLEAR").toUpperCase();
+function translateVerdict(verdict, locale = lastUiLocale) {
+  return t(`verdict.${(verdict || "UNCLEAR").toUpperCase()}`, {}, locale);
 }
 
 function firstSentenceOrEmpty(text) {
@@ -703,6 +828,17 @@ function shouldShowSettingsAction(message) {
   return ["api key", "backend", "endpoint", "options", "provider"].some((hint) => lower.includes(hint));
 }
 
+function resolveUiLocale(answerLanguagePreference = "auto", pageLocale = "") {
+  return I18N.resolveLocale(answerLanguagePreference, {
+    pageLocale,
+    browserLocale: chrome.i18n.getUILanguage()
+  });
+}
+
+function t(key, values = {}, locale = lastUiLocale) {
+  return I18N.t(locale, key, values);
+}
+
 function splitSentences(text) {
   return (text || "")
     .split(/(?<=[.!?])\s+/)
@@ -729,6 +865,54 @@ function parseDomainList(rawValue) {
     .split(/[\n,]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+async function getOrCreateTrialClientId() {
+  const stored = await chrome.storage.local.get(TRIAL_CLIENT_ID_KEY);
+  const existing = stored[TRIAL_CLIENT_ID_KEY];
+
+  if (typeof existing === "string" && existing.trim().length > 0) {
+    return existing.trim();
+  }
+
+  const generated = crypto.randomUUID();
+  await chrome.storage.local.set({
+    [TRIAL_CLIENT_ID_KEY]: generated
+  });
+
+  return generated;
+}
+
+function extractBackendErrorMessage(responseText) {
+  const fallback = trimText(responseText, 240);
+
+  try {
+    const parsed = JSON.parse(responseText);
+
+    if (typeof parsed?.detail === "string" && parsed.detail.trim()) {
+      return trimText(parsed.detail.trim(), 240);
+    }
+
+    if (typeof parsed?.title === "string" && parsed.title.trim()) {
+      return trimText(parsed.title.trim(), 240);
+    }
+
+    if (parsed?.errors && typeof parsed.errors === "object") {
+      const firstKey = Object.keys(parsed.errors)[0];
+
+      if (firstKey) {
+        const firstValue = parsed.errors[firstKey];
+
+        if (Array.isArray(firstValue) && firstValue[0]) {
+          return trimText(String(firstValue[0]), 240);
+        }
+      }
+    }
+
+    return fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function trimText(text, maxLength) {

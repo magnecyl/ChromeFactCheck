@@ -18,6 +18,20 @@ public sealed class FactCheckMeta
     public string Locale { get; set; } = "en-US";
 
     public IReadOnlyList<FactCheckCheckedSource> CheckedSources { get; set; } = Array.Empty<FactCheckCheckedSource>();
+
+    public int? PromptTokens { get; set; }
+
+    public int? CompletionTokens { get; set; }
+
+    public int? TotalTokens { get; set; }
+
+    public bool TrialMode { get; set; }
+
+    public int? TrialTokenLimit { get; set; }
+
+    public int? TrialUsedTokens { get; set; }
+
+    public int? TrialRemainingTokens { get; set; }
 }
 
 public sealed class FactCheckCheckedSource

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ChromeFactCheck.Api.Options;
 using ChromeFactCheck.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -38,8 +39,10 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddHttpClient("llm");
 builder.Services.AddHttpClient("retrieval");
+builder.Services.Configure<TrialModeOptions>(builder.Configuration.GetSection(TrialModeOptions.SectionName));
 builder.Services.AddScoped<SourceRetrievalService>();
 builder.Services.AddScoped<IFactCheckOrchestrator, FactCheckOrchestrator>();
+builder.Services.AddSingleton<TrialQuotaService>();
 
 var app = builder.Build();
 

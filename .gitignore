@@ -1,5 +1,41 @@
+# Build outputs
 bin/
 obj/
-.vs/
+out/
+
+# .NET cache and test artifacts
+TestResults/
+*.coverage
+*.coveragexml
+*.trx
+
+# User-specific files
 *.user
+*.rsuser
 *.suo
+*.userosscache
+*.sln.docstates
+
+# IDE/editor folders
+.vs/
+.vscode/
+.idea/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Extension/package artifacts
+*.zip
+extension/dist/
+extension/build/
+
+# Local environment and secrets
+.env
+.env.*
+*.local

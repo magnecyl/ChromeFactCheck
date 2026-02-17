@@ -1,99 +1,144 @@
-# ChromeFactCheck MVP
+# ChromeFactCheck
 
-This repo contains a first end-to-end MVP for a Chrome fact-check workflow:
+ChromeFactCheck is a Chrome extension plus ASP.NET Core backend for fast claim verification.
+It lets users select text on any page, request a fact check, view a short in-page summary, and open a full report on demand.
 
-- `src/ChromeFactCheck.Api`: ASP.NET Core Web API backend
-- `extension`: Chrome Manifest V3 extension
+## What It Does
 
-## Current scope
+- Select text on a page and trigger fact checking.
+- Show a short 2-3 sentence summary in a popover.
+- Show loading state with spinner while analysis is running.
+- Open detailed output only when user clicks `Read more...`.
+- Support configurable LLM provider, endpoint, model, API key, and answer language.
 
-Implemented now:
-- Select text on any page.
-- Inline prompt appears on selection with a `Fact-check` action.
-- Right click -> `Fact-check selected text`.
-- Extension sends your request contract to the backend.
-- Backend builds your System/Developer/User prompt and calls the configured provider.
-- Backend fetches source URLs found in the selected text and includes them in verification context.
-- Extension includes an explicit answer-language setting for generated explanations.
-- A short 2-3 sentence summary appears in-page as a popover.
-- `Read more...` opens the full extension result page.
-- Result view shows explicit `True %` and `False %` probabilities plus checked source status.
+## Repository Structure
 
-Planned next:
-- Auto-check full page content.
-- Retrieval pipeline (Step A + Step B with source citations).
+- `extension/` Chrome Manifest V3 extension
+- `src/ChromeFactCheck.Api/` ASP.NET Core backend (`net9.0`)
+- `ChromeFactCheck.sln` solution file
 
-## Backend run
+## Prerequisites
+
+- .NET SDK 9.0+
+- Google Chrome (or Chromium with extension support)
+- An LLM API key for configured provider
+
+## Quick Start
+
+### 1) Run backend
+
+From repo root:
 
 ```powershell
-cd src/ChromeFactCheck.Api
-dotnet run
+dotnet run --project src/ChromeFactCheck.Api --urls http://localhost:5053
 ```
 
-Default local URL from launch profile: `http://localhost:5053`.
+Health check:
 
-Health endpoint:
+```powershell
+curl http://localhost:5053/api/health
+```
+
+### 2) Load extension
+
+1. Open `chrome://extensions`
+2. Enable `Developer mode`
+3. Click `Load unpacked`
+4. Select the `extension` folder
+
+### 3) Configure settings
+
+Use the extension popup (`toolbar icon`) or options page:
+
+- `Backend URL`: `http://localhost:5053` for local development
+- `Provider`: `openai`, `azure_openai`, or `custom`
+- `Endpoint`: required for `azure_openai` and `custom`
+- `Model`: for example `gpt-4.1-mini`
+- `API Key`: stored in `chrome.storage.local`
+- `Answer Language`: `auto` or explicit locale (`en-US`, `sv-SE`, etc.)
+
+## User Flow
+
+1. User highlights text on a web page.
+2. Extension opens the small fact-check prompt/popover.
+3. Backend receives selection + metadata and runs analysis.
+4. Extension shows short summary with estimated true/false probability.
+5. User can click `Read more...` to open full report page.
+
+## API Reference
+
+### Endpoints
+
 - `GET /api/health`
-
-Fact-check endpoint:
 - `POST /api/fact-check/selection`
-- API key header: `X-Llm-Api-Key`
 
-### Provider handling
-
-`userPreferences.provider` supports:
-- `openai`
-- `azure_openai`
-- `custom`
-
-`userPreferences.endpoint` behavior:
-- `openai`: optional. If empty, defaults to `https://api.openai.com`.
-- `azure_openai`: required full chat completions URL including `api-version`.
-- `custom`: required. OpenAI-compatible base URL or full `/chat/completions` URL.
-
-## Extension load
-
-1. Open `chrome://extensions`.
-2. Enable Developer mode.
-3. Click `Load unpacked`.
-4. Choose the `extension` folder.
-5. Open extension `Details` -> `Extension options`.
-6. Fill backend URL/provider/model/API key.
-7. Pick preferred `Answer language` (`Auto` uses page/browser locale).
-
-## Extension usage
-
-1. Highlight text on a webpage.
-2. Right click and choose `Fact-check selected text`.
-3. Read the short popover summary.
-4. Click `Read more...` for full verdicts and follow-up checks.
-
-## Notes on secrets
-
-- API key is stored in `chrome.storage.local` by the extension.
-- API key is sent to backend in `X-Llm-Api-Key` header.
-- Backend does not persist API keys.
-
-## Request contract
-
-The extension sends:
+### Request contract (`POST /api/fact-check/selection`)
 
 ```json
 {
-  "selectedText": "...",
-  "pageUrl": "...",
-  "pageTitle": "...",
+  "selectedText": "string",
+  "pageUrl": "string",
+  "pageTitle": "string",
   "locale": "en-US",
   "userPreferences": {
     "provider": "openai|azure_openai|custom",
-    "endpoint": "...",
-    "model": "gpt-4.1-mini",
+    "endpoint": "string",
+    "model": "string",
     "apiKeyPresent": true,
     "strictness": "low|medium|high",
-    "answerLanguage": "auto|en-US|sv-SE|...",
+    "answerLanguage": "auto|en-US|sv-SE",
     "maxSources": 5,
     "trustedDomains": ["wikipedia.org"],
     "blockedDomains": ["example.com"]
   }
 }
 ```
+
+### Provider behavior
+
+- `openai`: endpoint optional, defaults to `https://api.openai.com`
+- `azure_openai`: full chat-completions endpoint required (include `api-version`)
+- `custom`: OpenAI-compatible endpoint required
+
+### Secrets and auth
+
+- Extension sends key in `X-Llm-Api-Key` header.
+- Backend uses it per request and should not persist it.
+
+## Development Workflow
+
+### Build
+
+```powershell
+dotnet build ChromeFactCheck.sln
+```
+
+### Typical local loop
+
+1. Edit API and/or extension files.
+2. Build backend with `dotnet build`.
+3. Reload extension in `chrome://extensions`.
+4. Re-test by selecting text on a page.
+
+## Troubleshooting
+
+- `Could not load file 'content.js' ... UTF-8 encoded`
+  - Re-save `extension/content.js` as UTF-8 (without BOM recommended).
+- `Cannot find menu item with id ...`
+  - Reload extension and ensure context menu is created on startup/install.
+- Popup not updating
+  - Reload extension and check `chrome://extensions` service worker logs.
+- Backend not reachable
+  - Verify API URL and run `curl http://localhost:5053/api/health`.
+
+## Security Notes
+
+- Do not commit real API keys.
+- Do not log secrets in API or extension logs.
+- Keep provider endpoints explicit in non-default setups.
+
+## Roadmap
+
+- Full-page auto-check mode (beyond selected text)
+- Retrieval-assisted second pass with source adjudication
+- Better citation display and conflict handling between sources

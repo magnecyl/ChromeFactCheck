@@ -22,7 +22,9 @@ public sealed class SourceRetrievalService(
             .Where(static domain => !string.IsNullOrWhiteSpace(domain))
             .ToArray();
 
-        var urls = ExtractUrls(request.SelectedText)
+        var urls = MergeUniqueUrls(
+                ExtractUrlsFromSelectedLinks(request.SelectedLinks),
+                ExtractUrls(request.SelectedText))
             .Take(sourceLimit)
             .ToList();
 
@@ -204,6 +206,48 @@ public sealed class SourceRetrievalService(
             if (seen.Add(uri.AbsoluteUri))
             {
                 yield return uri;
+            }
+        }
+    }
+
+    private static IEnumerable<Uri> ExtractUrlsFromSelectedLinks(IReadOnlyList<string> selectedLinks)
+    {
+        foreach (var raw in selectedLinks ?? Array.Empty<string>())
+        {
+            var candidate = (raw ?? string.Empty).Trim();
+
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                continue;
+            }
+
+            if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+            {
+                continue;
+            }
+
+            if (!uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) &&
+                !uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            yield return uri;
+        }
+    }
+
+    private static IEnumerable<Uri> MergeUniqueUrls(params IEnumerable<Uri>[] groups)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in groups)
+        {
+            foreach (var uri in group)
+            {
+                if (seen.Add(uri.AbsoluteUri))
+                {
+                    yield return uri;
+                }
             }
         }
     }

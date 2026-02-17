@@ -42,7 +42,9 @@ public sealed class FactCheckOrchestrator(
             throw new UpstreamLlmException(upstreamResponse.StatusCode, responseBody);
         }
 
-        var modelJson = ExtractAssistantJson(responseBody);
+        using var upstreamJson = ParseUpstreamJson(responseBody);
+        var usage = ExtractUsage(upstreamJson.RootElement);
+        var modelJson = ExtractAssistantJson(upstreamJson.RootElement);
         var cleanedJson = StripMarkdownCodeFences(modelJson);
 
         FactCheckSelectionResponse? parsed;
@@ -77,6 +79,9 @@ public sealed class FactCheckOrchestrator(
                 RetrievalStatus = source.RetrievalStatus
             })
             .ToArray();
+        parsed.Meta.PromptTokens = usage.PromptTokens;
+        parsed.Meta.CompletionTokens = usage.CompletionTokens;
+        parsed.Meta.TotalTokens = usage.TotalTokens;
 
         NormalizeProbabilities(parsed);
 
@@ -178,11 +183,59 @@ public sealed class FactCheckOrchestrator(
         };
     }
 
-    private static string ExtractAssistantJson(string responseBody)
+    private static JsonDocument ParseUpstreamJson(string responseBody)
     {
-        using var json = JsonDocument.Parse(responseBody);
+        try
+        {
+            return JsonDocument.Parse(responseBody);
+        }
+        catch (JsonException ex)
+        {
+            throw new LlmResponseFormatException("LLM response was not valid JSON", ex);
+        }
+    }
 
-        if (!json.RootElement.TryGetProperty("choices", out var choicesElement) ||
+    private static UsageTokens ExtractUsage(JsonElement rootElement)
+    {
+        if (!rootElement.TryGetProperty("usage", out var usageElement) ||
+            usageElement.ValueKind != JsonValueKind.Object)
+        {
+            return new UsageTokens(null, null, null);
+        }
+
+        var promptTokens = TryReadInt(usageElement, "prompt_tokens");
+        var completionTokens = TryReadInt(usageElement, "completion_tokens");
+        var totalTokens = TryReadInt(usageElement, "total_tokens");
+
+        promptTokens ??= TryReadInt(usageElement, "input_tokens");
+        completionTokens ??= TryReadInt(usageElement, "output_tokens");
+
+        if (!totalTokens.HasValue && (promptTokens.HasValue || completionTokens.HasValue))
+        {
+            totalTokens = (promptTokens ?? 0) + (completionTokens ?? 0);
+        }
+
+        return new UsageTokens(promptTokens, completionTokens, totalTokens);
+    }
+
+    private static int? TryReadInt(JsonElement source, string propertyName)
+    {
+        if (!source.TryGetProperty(propertyName, out var property))
+        {
+            return null;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var intValue))
+        {
+            return intValue;
+        }
+
+        return null;
+    }
+
+    private static string ExtractAssistantJson(JsonElement rootElement)
+    {
+        if (!rootElement.TryGetProperty("choices", out var choicesElement) ||
             choicesElement.ValueKind != JsonValueKind.Array ||
             choicesElement.GetArrayLength() == 0)
         {
@@ -240,6 +293,8 @@ public sealed class FactCheckOrchestrator(
 
         return string.Join('\n', lines).Trim();
     }
+
+    private sealed record UsageTokens(int? PromptTokens, int? CompletionTokens, int? TotalTokens);
 }
 
 public sealed class UpstreamLlmException(HttpStatusCode statusCode, string responseBody) : Exception(

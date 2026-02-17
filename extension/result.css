@@ -43,6 +43,31 @@ h3 {
   font-size: 0.93rem;
   font-weight: 600;
   color: #1d2a40;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.prob-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.prob-chip.true {
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+}
+
+.prob-chip.false {
+  color: #b91c1c;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
 }
 
 .panel {

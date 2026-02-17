@@ -7,6 +7,8 @@ public sealed class FactCheckSelectionRequest
     [Required(AllowEmptyStrings = false)]
     public string SelectedText { get; init; } = string.Empty;
 
+    public IReadOnlyList<string> SelectedLinks { get; init; } = Array.Empty<string>();
+
     public string PageUrl { get; init; } = string.Empty;
 
     public string PageTitle { get; init; } = string.Empty;

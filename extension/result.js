@@ -1,8 +1,10 @@
+const SETTINGS_KEY = "settings";
 const RESULT_KEY = "lastFactCheckResult";
 const ERROR_KEY = "lastFactCheckError";
 const INPUT_KEY = "lastFactCheckInput";
 const TIMESTAMP_KEY = "lastFactCheckAt";
 const MIN_LOADING_MS = 900;
+const I18N = globalThis.ChromeFactCheckI18n;
 
 const loadingPanel = document.getElementById("loading-panel");
 const timestampElement = document.getElementById("timestamp");
@@ -22,25 +24,37 @@ const claimsListElement = document.getElementById("claims-list");
 const emptyPanel = document.getElementById("empty-panel");
 const openOptionsButton = document.getElementById("open-options");
 
+let currentLocale = I18N.DEFAULT_LOCALE;
+
 openOptionsButton.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
 
 initialize().catch((error) => {
-  showError(error instanceof Error ? error.message : "Failed to load result.");
+  const message = error instanceof Error ? error.message : t("result.errorLoadFailed");
+  showError(message);
 });
 
 async function initialize() {
   const loadingStart = Date.now();
-  const state = await chrome.storage.local.get([RESULT_KEY, ERROR_KEY, INPUT_KEY, TIMESTAMP_KEY]);
+  const state = await chrome.storage.local.get([SETTINGS_KEY, RESULT_KEY, ERROR_KEY, INPUT_KEY, TIMESTAMP_KEY]);
+  const settings = state[SETTINGS_KEY] || {};
   const result = state[RESULT_KEY];
   const error = state[ERROR_KEY];
   const input = state[INPUT_KEY];
   const timestamp = state[TIMESTAMP_KEY];
 
+  currentLocale = I18N.resolveLocale(settings.answerLanguage || "auto", {
+    pageLocale: document.documentElement.lang || "",
+    browserLocale: navigator.language || ""
+  });
+
+  I18N.applyTranslations(document, currentLocale);
+  document.title = t("result.documentTitle");
+
   timestampElement.textContent = timestamp
-    ? `Updated ${new Date(timestamp).toLocaleString()}`
-    : "No runs yet";
+    ? t("result.timestampUpdated", { timestamp: new Date(timestamp).toLocaleString() })
+    : t("result.timestampNone");
 
   if (input?.selectedText) {
     selectedTextElement.textContent = input.selectedText;
@@ -79,17 +93,37 @@ function renderSummary(assessment, claims) {
 
   if (overallTruthProbability !== null) {
     const falseProbability = 1 - overallTruthProbability;
-    overallProbabilityElement.textContent = `True: ${(overallTruthProbability * 100).toFixed(0)}% | False: ${(falseProbability * 100).toFixed(0)}%`;
+    renderOverallProbability(
+      Number((overallTruthProbability * 100).toFixed(0)),
+      Number((falseProbability * 100).toFixed(0))
+    );
   } else {
     const inferred = inferOverallTruthProbability(claims);
-    overallProbabilityElement.textContent = `True: ${(inferred * 100).toFixed(0)}% | False: ${((1 - inferred) * 100).toFixed(0)}%`;
+    renderOverallProbability(
+      Number((inferred * 100).toFixed(0)),
+      Number(((1 - inferred) * 100).toFixed(0))
+    );
   }
 
-  summaryElement.textContent = assessment.summary || "No summary returned.";
+  summaryElement.textContent = assessment.summary || t("result.summaryNone");
 
   renderList(keyRisksElement, assessment.keyRisks || []);
   renderList(checkNextElement, assessment.whatToCheckNext || []);
   summaryPanel.classList.remove("hidden");
+}
+
+function renderOverallProbability(truePct, falsePct) {
+  overallProbabilityElement.replaceChildren();
+
+  const trueBadge = document.createElement("span");
+  trueBadge.className = "prob-chip true";
+  trueBadge.textContent = `${t("prob.true")} ${truePct}%`;
+
+  const falseBadge = document.createElement("span");
+  falseBadge.className = "prob-chip false";
+  falseBadge.textContent = `${t("prob.false")} ${falsePct}%`;
+
+  overallProbabilityElement.append(trueBadge, falseBadge);
 }
 
 function renderCheckedSources(sources) {
@@ -97,7 +131,7 @@ function renderCheckedSources(sources) {
 
   if (!sources.length) {
     const li = document.createElement("li");
-    li.textContent = "No source links were included in the selected text.";
+    li.textContent = t("result.sourcesNone");
     checkedSourcesElement.appendChild(li);
     sourcesPanel.classList.remove("hidden");
     return;
@@ -111,11 +145,14 @@ function renderCheckedSources(sources) {
     link.href = source.url || "#";
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.textContent = source.title || source.url || "(untitled source)";
+    link.textContent = source.title || source.url || t("result.untitledSource");
 
     const status = document.createElement("div");
     status.className = "source-status";
-    status.textContent = `${source.retrievalStatus || "unknown"} - ${source.url || ""}`;
+    status.textContent = t("result.sourceStatusLine", {
+      status: source.retrievalStatus || t("result.sourceStatusUnknown"),
+      url: source.url || ""
+    });
 
     li.append(link, status);
     checkedSourcesElement.appendChild(li);
@@ -130,7 +167,7 @@ async function renderClaims(claims) {
 
   if (!claims.length) {
     const note = document.createElement("p");
-    note.textContent = "No claims returned.";
+    note.textContent = t("result.noClaims");
     claimsListElement.appendChild(note);
   }
 
@@ -148,38 +185,43 @@ function buildClaimElement(claim) {
   const header = document.createElement("div");
   header.className = "claim-header";
 
-  const badge = document.createElement("span");
   const verdict = (claim.verdict || "UNCLEAR").toUpperCase();
+  const badge = document.createElement("span");
   badge.className = `badge ${verdict}`;
-  badge.textContent = verdict;
+  badge.textContent = translateVerdict(verdict);
 
   const confidence = document.createElement("span");
   const confidenceValue = clamp01(Number(claim.confidence || 0));
-  confidence.textContent = `Confidence: ${(confidenceValue * 100).toFixed(0)}%`;
+  confidence.textContent = t("result.confidenceLine", {
+    confidence: (confidenceValue * 100).toFixed(0)
+  });
 
   const truthProbabilityValue = toProbability(claim.truthProbability);
   const inferredTruthProbability =
     truthProbabilityValue !== null ? truthProbabilityValue : inferTruthProbabilityFromVerdict(verdict, confidenceValue);
 
   const truthProbability = document.createElement("span");
-  truthProbability.textContent = `True: ${(inferredTruthProbability * 100).toFixed(0)}% | False: ${((1 - inferredTruthProbability) * 100).toFixed(0)}%`;
+  truthProbability.textContent = t("result.probabilityLine", {
+    truePct: (inferredTruthProbability * 100).toFixed(0),
+    falsePct: ((1 - inferredTruthProbability) * 100).toFixed(0)
+  });
 
   header.append(badge, confidence, truthProbability);
 
   const claimText = document.createElement("p");
-  claimText.textContent = claim.claim || "(empty claim)";
+  claimText.textContent = claim.claim || t("result.emptyClaim");
 
   const explanation = document.createElement("p");
-  explanation.textContent = claim.shortExplanation || "No explanation returned.";
+  explanation.textContent = claim.shortExplanation || t("result.noExplanation");
 
   const searchTitle = document.createElement("h3");
-  searchTitle.textContent = "Search queries";
+  searchTitle.textContent = t("result.searchQueriesTitle");
 
   const searchList = document.createElement("ul");
   renderList(searchList, claim.searchQueries || []);
 
   const evidenceTitle = document.createElement("h3");
-  evidenceTitle.textContent = "Evidence needed";
+  evidenceTitle.textContent = t("result.evidenceNeededTitle");
 
   const evidenceList = document.createElement("ul");
   renderList(evidenceList, claim.evidenceNeeded || []);
@@ -194,7 +236,7 @@ function renderList(target, values) {
 
   if (!values.length) {
     const li = document.createElement("li");
-    li.textContent = "None";
+    li.textContent = t("ui.none");
     target.appendChild(li);
     return;
   }
@@ -204,6 +246,14 @@ function renderList(target, values) {
     li.textContent = value;
     target.appendChild(li);
   }
+}
+
+function translateVerdict(verdict) {
+  return t(`verdict.${(verdict || "UNCLEAR").toUpperCase()}`);
+}
+
+function t(key, values = {}) {
+  return I18N.t(currentLocale, key, values);
 }
 
 function toProbability(value) {

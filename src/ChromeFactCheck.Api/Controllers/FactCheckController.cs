@@ -8,12 +8,14 @@ namespace ChromeFactCheck.Api.Controllers;
 [Route("api/fact-check")]
 public sealed class FactCheckController(
     IFactCheckOrchestrator orchestrator,
+    TrialQuotaService trialQuotaService,
     ILogger<FactCheckController> logger) : ControllerBase
 {
     [HttpPost("selection")]
     public async Task<ActionResult<FactCheckSelectionResponse>> CheckSelection(
         [FromBody] FactCheckSelectionRequest request,
         [FromHeader(Name = "X-Llm-Api-Key")] string? apiKey,
+        [FromHeader(Name = "X-Trial-Id")] string? trialId,
         CancellationToken cancellationToken)
     {
         var validationErrors = ValidateRequest(request, apiKey);
@@ -27,10 +29,79 @@ public sealed class FactCheckController(
             });
         }
 
+        var normalizedProvider = LlmProviderResolver.NormalizeProvider(request.UserPreferences.Provider);
+        var shouldUseTrial = string.IsNullOrWhiteSpace(apiKey) &&
+                             trialQuotaService.IsEnabledForProvider(normalizedProvider);
+
+        if (LlmProviderResolver.RequiresApiKey(normalizedProvider) && string.IsNullOrWhiteSpace(apiKey) && !shouldUseTrial)
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["x-llm-api-key"] = [$"{normalizedProvider} requires X-Llm-Api-Key header"]
+            })
+            {
+                Title = "Invalid fact-check request",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        if (shouldUseTrial && string.IsNullOrWhiteSpace(trialId))
+        {
+            return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["x-trial-id"] = ["X-Trial-Id header is required for trial mode"]
+            })
+            {
+                Title = "Invalid fact-check request",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
         try
         {
-            var result = await orchestrator.FactCheckSelectionAsync(request, apiKey, cancellationToken);
+            if (shouldUseTrial)
+            {
+                trialQuotaService.EnsureCanUseTrial(trialId!);
+            }
+
+            var effectiveApiKey = shouldUseTrial
+                ? trialQuotaService.GetApiKeyForTrial()
+                : apiKey;
+
+            if (LlmProviderResolver.RequiresApiKey(normalizedProvider) && string.IsNullOrWhiteSpace(effectiveApiKey))
+            {
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Invalid configuration",
+                    Detail = "Trial mode is not configured with a backend API key.",
+                    Status = StatusCodes.Status400BadRequest
+                });
+            }
+
+            var result = await orchestrator.FactCheckSelectionAsync(request, effectiveApiKey, cancellationToken);
+
+            if (shouldUseTrial)
+            {
+                var consumedTokens = GetConsumedTokenCount(result, request);
+                var snapshot = trialQuotaService.AddUsage(trialId!, consumedTokens);
+
+                result.Meta.TrialMode = true;
+                result.Meta.TrialTokenLimit = snapshot.LimitTokens;
+                result.Meta.TrialUsedTokens = snapshot.UsedTokens;
+                result.Meta.TrialRemainingTokens = snapshot.RemainingTokens;
+            }
+
             return Ok(result);
+        }
+        catch (TrialQuotaExceededException ex)
+        {
+            return StatusCode(StatusCodes.Status402PaymentRequired, new ProblemDetails
+            {
+                Title = "Trial quota exhausted",
+                Detail =
+                    $"Your free trial limit of {ex.LimitTokens} tokens is exhausted. Add your own API key in extension settings to continue.",
+                Status = StatusCodes.Status402PaymentRequired
+            });
         }
         catch (ArgumentException ex)
         {
@@ -99,21 +170,14 @@ public sealed class FactCheckController(
             errors["userPreferences.answerLanguage"] = ["answerLanguage is required"];
         }
 
-        string provider;
-
         try
         {
-            provider = LlmProviderResolver.NormalizeProvider(preferences.Provider);
+            _ = LlmProviderResolver.NormalizeProvider(preferences.Provider);
         }
         catch (ArgumentException ex)
         {
             errors["userPreferences.provider"] = [ex.Message];
             return errors;
-        }
-
-        if (LlmProviderResolver.RequiresApiKey(provider) && string.IsNullOrWhiteSpace(apiKey))
-        {
-            errors["x-llm-api-key"] = [$"{provider} requires X-Llm-Api-Key header"];
         }
 
         if (preferences.ApiKeyPresent && string.IsNullOrWhiteSpace(apiKey))
@@ -122,5 +186,26 @@ public sealed class FactCheckController(
         }
 
         return errors;
+    }
+
+    private static int GetConsumedTokenCount(
+        FactCheckSelectionResponse response,
+        FactCheckSelectionRequest request)
+    {
+        if (response.Meta.TotalTokens is > 0)
+        {
+            return response.Meta.TotalTokens.Value;
+        }
+
+        var promptTokens = response.Meta.PromptTokens;
+        var completionTokens = response.Meta.CompletionTokens;
+
+        if (promptTokens.HasValue || completionTokens.HasValue)
+        {
+            return Math.Max(1, (promptTokens ?? 0) + (completionTokens ?? 0));
+        }
+
+        // Fallback estimate used only when upstream usage is missing.
+        return Math.Max(1, request.SelectedText.Length / 4);
     }
 }

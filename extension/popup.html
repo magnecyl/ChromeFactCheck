@@ -3,35 +3,36 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Chrome Fact Check</title>
+  <title data-i18n="popup.documentTitle">Chrome Fact Check</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <main class="popup">
     <header class="header">
-      <h1>Chrome Fact Check</h1>
-      <p>Quick controls</p>
+      <h1 data-i18n="popup.mainTitle">Chrome Fact Check</h1>
+      <p data-i18n="popup.subtitle">Quick controls</p>
     </header>
 
     <section class="panel">
-      <label for="answerLanguage">Answer language</label>
+      <label for="answerLanguage" data-i18n="popup.answerLanguageLabel">Answer language</label>
       <select id="answerLanguage">
-        <option value="auto">Auto (page/browser locale)</option>
-        <option value="en-US">English</option>
-        <option value="sv-SE">Swedish</option>
-        <option value="de-DE">German</option>
-        <option value="fr-FR">French</option>
-        <option value="es-ES">Spanish</option>
+        <option value="auto" data-i18n="lang.auto">Auto (page/browser locale)</option>
+        <option value="en-US" data-i18n="lang.en-US">English</option>
+        <option value="sv-SE" data-i18n="lang.sv-SE">Swedish</option>
+        <option value="de-DE" data-i18n="lang.de-DE">German</option>
+        <option value="fr-FR" data-i18n="lang.fr-FR">French</option>
+        <option value="es-ES" data-i18n="lang.es-ES">Spanish</option>
       </select>
       <p id="save-status" role="status" aria-live="polite"></p>
     </section>
 
     <section class="panel actions">
-      <button id="open-options" class="primary">Open settings</button>
-      <button id="open-result" class="secondary">Open latest report</button>
+      <button id="open-options" class="primary" data-i18n="popup.openSettings">Open settings</button>
+      <button id="open-result" class="secondary" data-i18n="popup.openResult">Open latest report</button>
     </section>
   </main>
 
+  <script src="localization.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
