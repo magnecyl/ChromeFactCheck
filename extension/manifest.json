@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chrome Fact Check",
-  "description": "Highlight text and send it to your ASP.NET fact-check backend.",
+  "description": "Fact-check selected text on any webpage with quick AI summaries, source-aware verdicts, and full details on demand.",
   "version": "0.1.0",
   "permissions": [
     "contextMenus",
