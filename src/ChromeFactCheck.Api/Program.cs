@@ -55,6 +55,13 @@ app.UseExceptionHandler();
 app.UseHttpsRedirection();
 app.UseCors("ExtensionCors");
 
+app.MapGet("/", () => Results.Ok(new
+{
+    service = "ChromeFactCheck.Api",
+    status = "ok",
+    health = "/api/health"
+}));
+
 app.MapGet("/api/health", () => Results.Ok(new
 {
     status = "ok",
