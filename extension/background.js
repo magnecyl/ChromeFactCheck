@@ -55,7 +55,7 @@ let menuAvailable = false;
 let lastUiLocale = I18N.DEFAULT_LOCALE;
 
 const DEFAULT_SETTINGS = {
-  backendBaseUrl: "http://localhost:5053",
+  backendBaseUrl: "https://chromefactcheck-api.azurewebsites.net",
   provider: "openai",
   endpoint: "https://api.openai.com",
   model: "gpt-4.1-mini",

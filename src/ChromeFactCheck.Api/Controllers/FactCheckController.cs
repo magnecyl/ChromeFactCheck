@@ -95,11 +95,13 @@ public sealed class FactCheckController(
         }
         catch (TrialQuotaExceededException ex)
         {
+            var trialLocale = ResolveTrialLocale(request);
+            var problem = GetTrialQuotaExceededProblem(trialLocale, ex.LimitTokens);
+
             return StatusCode(StatusCodes.Status402PaymentRequired, new ProblemDetails
             {
-                Title = "Trial quota exhausted",
-                Detail =
-                    $"Your free trial limit of {ex.LimitTokens} tokens is exhausted. Add your own API key in extension settings to continue.",
+                Title = problem.Title,
+                Detail = problem.Detail,
                 Status = StatusCodes.Status402PaymentRequired
             });
         }
@@ -207,5 +209,88 @@ public sealed class FactCheckController(
 
         // Fallback estimate used only when upstream usage is missing.
         return Math.Max(1, request.SelectedText.Length / 4);
+    }
+
+    private static string ResolveTrialLocale(FactCheckSelectionRequest request)
+    {
+        var answerLanguage = request.UserPreferences?.AnswerLanguage?.Trim() ?? string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(answerLanguage) &&
+            !string.Equals(answerLanguage, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return answerLanguage;
+        }
+
+        return request.Locale?.Trim() ?? string.Empty;
+    }
+
+    private static ProblemDetails GetTrialQuotaExceededProblem(string locale, int limitTokens)
+    {
+        var language = GetLanguageCode(locale);
+
+        if (language == "sv")
+        {
+            return new ProblemDetails
+            {
+                Title = "Gratis kvot förbrukad",
+                Detail =
+                    $"Din gratis kvot på {limitTokens} token är förbrukad. Lägg till din egen API-nyckel i tilläggets inställningar för att fortsätta."
+            };
+        }
+
+        if (language == "de")
+        {
+            return new ProblemDetails
+            {
+                Title = "Testkontingent aufgebraucht",
+                Detail =
+                    $"Ihr kostenloses Kontingent von {limitTokens} Tokens ist aufgebraucht. Fügen Sie in den Erweiterungseinstellungen Ihren eigenen API-Schlüssel hinzu, um fortzufahren."
+            };
+        }
+
+        if (language == "fr")
+        {
+            return new ProblemDetails
+            {
+                Title = "Quota gratuite épuisée",
+                Detail =
+                    $"Votre quota gratuit de {limitTokens} jetons est épuisé. Ajoutez votre propre clé API dans les paramètres de l'extension pour continuer."
+            };
+        }
+
+        if (language == "es")
+        {
+            return new ProblemDetails
+            {
+                Title = "Cuota gratuita agotada",
+                Detail =
+                    $"Tu cuota gratuita de {limitTokens} tokens está agotada. Agrega tu propia clave API en la configuración de la extensión para continuar."
+            };
+        }
+
+        return new ProblemDetails
+        {
+            Title = "Free token quota exhausted",
+            Detail =
+                $"Your free quota of {limitTokens} tokens is exhausted. Add your own API key in extension settings to continue."
+        };
+    }
+
+    private static string GetLanguageCode(string locale)
+    {
+        if (string.IsNullOrWhiteSpace(locale))
+        {
+            return "en";
+        }
+
+        var normalized = locale.Trim().Replace('_', '-');
+        var separatorIndex = normalized.IndexOf('-');
+
+        if (separatorIndex > 0)
+        {
+            normalized = normalized[..separatorIndex];
+        }
+
+        return normalized.ToLowerInvariant();
     }
 }

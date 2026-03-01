@@ -10,5 +10,5 @@ public sealed class TrialModeOptions
 
     public string ApiKey { get; init; } = string.Empty;
 
-    public int TokenLimit { get; init; } = 15000;
+    public int TokenLimit { get; init; } = 20000;
 }

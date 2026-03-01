@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Chrome Fact Check",
   "description": "Fact-check selected text on any webpage with quick AI summaries, source-aware verdicts, and full details on demand.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "permissions": [
     "contextMenus",
     "storage",
